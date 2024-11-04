@@ -1,0 +1,14 @@
+architecture:
+  type: rnn
+  hidden_size: 64
+
+batch_size: 64
+lr: 0.01
+epochs: 100
+samples_per_subject: 16
+
+horizons:
+  train: 60
+  pred: 30
+
+loss: mse
