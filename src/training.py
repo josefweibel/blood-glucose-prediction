@@ -44,7 +44,7 @@ class RNNModel(nn.Module):
 
 def load_config(config_name):
     if not os.path.exists(f'./config/{config_name}.yaml'):
-        raise KeyError(f'./configs/{config_name}.yaml does not exist')
+        raise KeyError(f'./config/{config_name}.yaml does not exist')
 
     with open(f'./config/{config_name}.yaml') as stream:
         config = yaml.safe_load(stream)
@@ -127,3 +127,5 @@ def train(config_name):
 
     return model
 
+
+#%%
