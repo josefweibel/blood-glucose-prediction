@@ -12,6 +12,10 @@ ipykernel = "*"
 matplotlib = "*"
 seaborn = "*"
 openpyxl = "*"
+torch = "*"
+tqdm = "*"
+pyyaml = "*"
+ipywidgets = "*"
 
 [dev-packages]
 
