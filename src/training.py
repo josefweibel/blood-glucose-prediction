@@ -33,7 +33,6 @@ class RNNModel(nn.Module):
 
     def forward(self, x, hidden_prev=None): # x.shape = (batch_size, 18)
         batch_size = x.shape[0]
-        x = x.unsqueeze(-1) # x.shape = (batch_size, 18, 1)
         x, hidden_prev = self.rnn(x, hidden_prev) # x.shape = (batch_size, 18, hidden_size)
         hidden_size = x.shape[-1]
         x = x.reshape(-1, hidden_size) # x.shape = (batch_size * 18, hidden_size)
@@ -59,6 +58,7 @@ def load_config(config_name):
     if 'horizons' not in config:
         raise KeyError('no horizons provided in ' + config_name)
 
+
     return config
 
 def build_model(config):
@@ -66,7 +66,7 @@ def build_model(config):
     del params['type']
 
     if config['architecture']['type'] == 'rnn':
-        return RNNModel(**params, input_size=1)
+        return RNNModel(**params, input_size=len(config['features']))
     else:
        raise KeyError('unknwon architecture ' + config['architecture']['type'])
 
@@ -76,18 +76,24 @@ def get_criterion(config):
     else:
        raise KeyError('unknwon loss function ' + config['loss'])
 
+
 def build_train_dataloader(config):
     train_data = pd.read_csv('./data/train_processed.csv').sort_values('5minute_intervals_timestamp')
 
     n_train = int(config['horizons']['train'] / DATA_TIME_INTERVAL)
     n_pred = int(config['horizons']['pred'] / DATA_TIME_INTERVAL)
 
+    features = config['features']
+
     samples = []
     for subject in train_data['subject'].unique():
         subject_data = train_data[train_data['subject'] == subject]
         for start_idx in range(len(subject_data) - n_train - n_pred + 1):
-            x = subject_data['cbg'].iloc[start_idx:start_idx + n_train + n_pred].values
-            samples.append(x)
+            x_features = [subject_data[feature].iloc[start_idx:start_idx + n_train + n_pred].values for feature in features]
+
+            # Stack features to get (sequence_length, n_features) array
+            x_features = np.stack(x_features, axis=1)
+            samples.append(torch.Tensor(x_features))
 
     print('   training samples:', len(samples))
 
@@ -103,15 +109,20 @@ def build_val_dataloader(config):
     n_train = int(config['horizons']['train'] / DATA_TIME_INTERVAL)
     n_pred = int(config['horizons']['pred'] / DATA_TIME_INTERVAL)
 
+    features = config['features']
+
     X = []
     Y = []
     for subject in val_data['subject'].unique():
         subject_data = val_data[val_data['subject'] == subject]
         for start_idx in range(len(subject_data) - n_train - n_pred + 1):
-            x = subject_data['cbg'].iloc[start_idx:start_idx + n_train].values
+            x_features = [subject_data[feature].iloc[start_idx:start_idx + n_train].values for feature in features]
             y = subject_data['cbg'].iloc[start_idx + n_train:start_idx + n_train + n_pred].values
 
-            X.append(x)
+            # Stack features to get (sequence_length, n_features) array
+            x_features = np.stack(x_features, axis=1)
+            X.append(torch.Tensor(x_features))
+
             Y.append(y)
 
     print('   val samples:', len(X))
@@ -129,7 +140,8 @@ def validate(model, val_dataloader):
         Y_trues = []
         Y_preds = []
         for X, Y_true in val_dataloader:
-            X = X.to(device)
+            # Stack all samples in X to create a batch
+            X = torch.stack(X).to(device)  # Shape: (batch_size, sequence_length, n_features)
             Y_true = Y_true.to(device)
 
             Y_pred = torch.zeros(Y_true.shape)
@@ -154,6 +166,8 @@ def validate(model, val_dataloader):
             'mae': nn.functional.l1_loss(Y_preds, Y_trues).detach().item()
         }
 
+
+
 def train(config_name):
     print('👉 loading config')
 
@@ -171,23 +185,33 @@ def train(config_name):
     optimizer = optim.Adam(model.parameters(), config['lr'], weight_decay=0.)
     criterion = get_criterion(config)
 
+    features = config['features']
+    nb_features = len(features)
+
+
+
+
     losses = []
     val_scores = []
     for epoch in (pbar := tqdm(range(config['epochs']))):
         pbar.set_description('Training')
         for i, (X,) in enumerate(train_dataloader):
             model.train()
-            X = X.to(device)
+            # Stack all samples in X to create a batch
+            X = torch.stack(X).to(device)  # Shape: (batch_size, sequence_length, n_features)
             Y, _ = model(X)
 
-            loss = criterion(Y.flatten(), X.flatten())
+            # Loss computation
+            if nb_features == 1:
+                loss = criterion(Y.flatten(), X.flatten())  # Compare with the same flattened tensor
+            else:
+                loss = criterion(Y.flatten(), X[:, :, 0].flatten())  # Adjust target as needed for the first feature
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
             losses.append(loss.detach().item())
-
             if i % 50 == 0:
                 if len(losses) >= 100:
                     pbar.set_postfix({'loss': round(np.mean(losses[-100]), 3)})
@@ -195,6 +219,7 @@ def train(config_name):
         pbar.set_description('Validating')
         epoch_scores = validate(model, val_dataloader)
         val_scores.append(epoch_scores)
+
 
     print('👉 saving model')
     torch.save(model.state_dict(), f'./models/{config_name}.pt')
@@ -212,3 +237,6 @@ def train(config_name):
         }, f)
 
     return model
+
+
+#%%
