@@ -140,8 +140,7 @@ def validate(model, val_dataloader):
         Y_trues = []
         Y_preds = []
         for X, Y_true in val_dataloader:
-            # Stack all samples in X to create a batch
-            X = torch.stack(X).to(device)  # Shape: (batch_size, sequence_length, n_features)
+            X = X.to(device)  # Shape: (batch_size, sequence_length, n_features)
             Y_true = Y_true.to(device)
 
             Y_pred = torch.zeros(Y_true.shape)
@@ -149,7 +148,7 @@ def validate(model, val_dataloader):
             for i in range(Y_true.shape[1]):
                 pred, last_hidden_state = model(X, last_hidden_state)
                 Y_pred[:, i] = pred[:, -1]
-                X = pred[:, -1].unsqueeze(-1)
+                X = torch.cat((pred[:, -1].unsqueeze(-1).unsqueeze(-1), torch.zeros(X.shape[0], 1, X.shape[2] - 1, device=pred.device)), dim=-1)
 
             Y_preds.extend(Y_pred.flatten())
             Y_trues.extend(Y_true.flatten())
@@ -198,8 +197,7 @@ def train(config_name):
         pbar.set_description('Training')
         for i, (X,) in enumerate(train_dataloader):
             model.train()
-            # Stack all samples in X to create a batch
-            X = torch.stack(X).to(device)  # Shape: (batch_size, sequence_length, n_features)
+            X = X.to(device)  # Shape: (batch_size, sequence_length, n_features)
             Y, _ = model(X)
 
             # Loss computation

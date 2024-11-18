@@ -11,3 +11,6 @@ horizons:
   pred: 30
 
 loss: mse
+
+features:
+  - cbg
