@@ -188,11 +188,12 @@ def train(config_name):
     features = config['features']
     nb_features = len(features)
 
-
-
-
     losses = []
     val_scores = []
+    best_epoch = -1
+    best_epoch_score = None
+    best_epche_state = None
+
     for epoch in (pbar := tqdm(range(config['epochs']))):
         pbar.set_description('Training')
         for i, (X,) in enumerate(train_dataloader):
@@ -218,11 +219,16 @@ def train(config_name):
 
         pbar.set_description('Validating')
         epoch_scores = validate(model, val_dataloader)
+        if best_epoch_score is None or epoch_scores[config['loss']] < best_epoch_score:
+            best_epoch = epoch
+            best_epoch_score = epoch_scores[config['loss']]
+            best_epche_state = model.state_dict()
+
         val_scores.append(epoch_scores)
 
 
     print('👉 saving model')
-    torch.save(model.state_dict(), f'./models/{config_name}.pt')
+    torch.save(best_epche_state, f'./models/{config_name}.pt')
 
     with open(f'./models/{config_name}_meta.json', '+w') as f:
         scores = {}
@@ -232,6 +238,7 @@ def train(config_name):
                 scores[key].append(value)
 
         json.dump({
+            'best_epoch': best_epoch,
             'loss': losses,
             'val_scores': scores
         }, f)
