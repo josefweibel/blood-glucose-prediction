@@ -93,7 +93,7 @@ def build_train_dataloader(config):
 
             # Stack features to get (sequence_length, n_features) array
             x_features = np.stack(x_features, axis=1)
-            samples.append(torch.Tensor(x_features))
+            samples.append(x_features)
 
     print('   training samples:', len(samples))
 
@@ -121,7 +121,7 @@ def build_val_dataloader(config):
 
             # Stack features to get (sequence_length, n_features) array
             x_features = np.stack(x_features, axis=1)
-            X.append(torch.Tensor(x_features))
+            X.append(x_features)
 
             Y.append(y)
 
