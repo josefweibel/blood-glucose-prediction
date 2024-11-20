@@ -148,7 +148,13 @@ def validate(model, val_dataloader):
             for i in range(Y_true.shape[1]):
                 pred, last_hidden_state = model(X, last_hidden_state)
                 Y_pred[:, i] = pred[:, -1]
-                X = torch.cat((pred[:, -1].unsqueeze(-1).unsqueeze(-1), torch.zeros(X.shape[0], 1, X.shape[2] - 1, device=pred.device)), dim=-1)
+
+                #####
+                X_zeros = torch.zeros(X.shape[0], 1, X.shape[2] - 2, device=pred.device) # zeros for unpredicted features
+                X_pred = pred[:, -1].unsqueeze(-1).unsqueeze(-1) # cbg prediction
+                X_mean = torch.mean(X[:, : ,1], dim = 1).unsqueeze(-1).unsqueeze(-1) # mean for basal over validaiton X
+                X = torch.cat((X_pred, X_mean, X_zeros), dim =-1)
+                #####
 
             Y_preds.extend(Y_pred.flatten())
             Y_trues.extend(Y_true.flatten())

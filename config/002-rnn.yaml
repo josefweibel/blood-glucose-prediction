@@ -12,7 +12,7 @@ horizons:
 
 loss: mse
 
-# first features needs to be cbg, this is what we want to predict
-features: ['cbg', 'carbInput', 'bolus']
+# Respect the order
+features: ['cbg', 'basal', 'gsr', 'carbInput', 'bolus']
 
 
