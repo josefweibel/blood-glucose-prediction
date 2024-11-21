@@ -149,28 +149,33 @@ def validate(model, val_dataloader):
                 pred, last_hidden_state = model(X, last_hidden_state)
                 Y_pred[:, i] = pred[:, -1]
 
-                #####
-                X_zeros = torch.zeros(X.shape[0], 1, X.shape[2] - 2, device=pred.device) # zeros for unpredicted features
-                X_pred = pred[:, -1].unsqueeze(-1).unsqueeze(-1) # cbg prediction
-                X_mean = torch.mean(X[:, : ,1], dim = 1).unsqueeze(-1).unsqueeze(-1) # mean for basal over validaiton X
-                X = torch.cat((X_pred, X_mean, X_zeros), dim =-1)
-                #####
+                if (X.shape[2] >= 2):
+                    #####
+                    X_zeros = torch.zeros(X.shape[0], 1, X.shape[2] - 2, device=pred.device) # zeros for unpredicted features
+                    X_pred = pred[:, -1].unsqueeze(-1).unsqueeze(-1) # cbg prediction
+                    X_mean = torch.mean(X[:, : ,1], dim = 1).unsqueeze(-1).unsqueeze(-1) # mean for basal over validaiton X
+                    X = torch.cat((X_pred, X_mean, X_zeros), dim =-1)
+                    #####
+                else:
+                    X = torch.Tensor(pred[:, -1].unsqueeze(-1).unsqueeze(-1))
 
             Y_preds.extend(Y_pred.flatten())
             Y_trues.extend(Y_true.flatten())
 
-        Y_preds = torch.Tensor(Y_preds)
-        Y_trues = torch.Tensor(Y_trues)
+        y_preds = torch.Tensor(Y_preds)
+        y_trues = torch.Tensor(Y_trues)
 
-        mse = nn.functional.mse_loss(Y_preds, Y_trues)
-        mape = torch.mean(torch.abs(Y_trues - Y_preds) / Y_trues.abs())
-        return {
+    return y_preds, y_trues
+
+def calculate_metrics(Y_preds, Y_trues):
+    mse = nn.functional.mse_loss(Y_preds, Y_trues)
+    mape = torch.mean(torch.abs(Y_trues - Y_preds) / Y_trues.abs())
+    return {
             'mse': mse.detach().item(),
             'rmse': torch.sqrt(mse).detach().item(),
             'mape': mape.detach().item(),
             'mae': nn.functional.l1_loss(Y_preds, Y_trues).detach().item()
         }
-
 
 
 def train(config_name):
@@ -222,7 +227,10 @@ def train(config_name):
                     pbar.set_postfix({'loss': round(np.mean(losses[-100]), 3)})
 
         pbar.set_description('Validating')
-        epoch_scores = validate(model, val_dataloader)
+
+        y_trues, y_preds = validate(model, val_dataloader)
+        epoch_scores = calculate_metrics(y_trues, y_preds)
+
         if best_epoch_score is None or epoch_scores[config['loss']] < best_epoch_score:
             best_epoch = epoch
             best_epoch_score = epoch_scores[config['loss']]
@@ -248,6 +256,26 @@ def train(config_name):
         }, f)
 
     return model
+
+
+
+def investigate_predictions(config_name):
+    print('👉 loading model')
+
+    config = load_config(config_name)
+    model = build_model(config)
+
+    model.load_state_dict(torch.load(f'./models/{config_name}.pt', weights_only=True))
+
+    print('👉 loading data')
+    val_dataloader = build_val_dataloader(config)
+
+    model = build_model(config)
+    model = model.to(device)
+
+    y_trues, y_preds = validate(model, val_dataloader)
+    return y_trues, y_preds
+
 
 
 #%%
