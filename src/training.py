@@ -159,23 +159,26 @@ def validate(model, val_dataloader):
                 else:
                     X = torch.Tensor(pred[:, -1].unsqueeze(-1).unsqueeze(-1))
 
-            Y_preds.extend(Y_pred.flatten())
-            Y_trues.extend(Y_true.flatten())
+            Y_preds.extend(Y_pred)
+            Y_trues.extend(Y_true)
 
-        y_preds = torch.Tensor(Y_preds)
-        y_trues = torch.Tensor(Y_trues)
+        Y_preds = torch.vstack(Y_preds)
+        Y_trues = torch.vstack(Y_trues)
 
-    return y_preds, y_trues
+    return Y_preds, Y_trues
 
 def calculate_metrics(Y_preds, Y_trues):
+    Y_preds = Y_trues.flatten()
+    Y_trues = Y_trues.flatten()
+
     mse = nn.functional.mse_loss(Y_preds, Y_trues)
     mape = torch.mean(torch.abs(Y_trues - Y_preds) / Y_trues.abs())
     return {
-            'mse': mse.detach().item(),
-            'rmse': torch.sqrt(mse).detach().item(),
-            'mape': mape.detach().item(),
-            'mae': nn.functional.l1_loss(Y_preds, Y_trues).detach().item()
-        }
+        'mse': mse.detach().item(),
+        'rmse': torch.sqrt(mse).detach().item(),
+        'mape': mape.detach().item(),
+        'mae': nn.functional.l1_loss(Y_preds, Y_trues).detach().item()
+    }
 
 
 def train(config_name):
@@ -263,18 +266,18 @@ def investigate_predictions(config_name):
     print('👉 loading model')
 
     config = load_config(config_name)
-    model = build_model(config)
+    model = build_model(config).to(device)
 
     model.load_state_dict(torch.load(f'./models/{config_name}.pt', weights_only=True))
 
     print('👉 loading data')
     val_dataloader = build_val_dataloader(config)
 
-    model = build_model(config)
-    model = model.to(device)
-
+    print('👉 predicting values')
     y_trues, y_preds = validate(model, val_dataloader)
-    return y_trues, y_preds
+
+    X = torch.vstack([X for X, _ in val_dataloader])
+    return X, y_trues, y_preds
 
 
 
