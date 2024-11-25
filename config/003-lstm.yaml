@@ -1,0 +1,16 @@
+architecture:
+  type: lstm
+  hidden_size: 64
+
+batch_size: 128
+lr: 0.001
+epochs: 10
+
+horizons:
+  train: 60
+  pred: 30
+
+loss: mse
+
+features:
+  - cbg
