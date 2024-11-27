@@ -15,9 +15,9 @@ DATA_TIME_INTERVAL = 5 # min
 device = torch.device('cpu')
 
 if torch.cuda.is_available():
-  device = torch.device('cuda')
+    device = torch.device('cuda')
 elif torch.backends.mps.is_available():
-  device = torch.device('mps')
+    device = torch.device('mps')
 
 
 class RNNModel(nn.Module):
@@ -181,7 +181,19 @@ def calculate_metrics(Y_preds, Y_trues):
     }
 
 
+def set_seed(seed):
+  np.random.seed(seed)
+  torch.manual_seed(seed)
+  if torch.cuda.is_available():
+      torch.cuda.manual_seed(seed)
+      torch.cuda.manual_seed_all(seed)
+
+  torch.backends.cudnn.deterministic = True
+  torch.backends.cudnn.benchmark = False
+
 def train(config_name):
+    set_seed(1)
+
     print('👉 loading config')
 
     config = load_config(config_name)
