@@ -7,7 +7,7 @@ from tqdm.notebook import tqdm
 import os
 import yaml
 import json
-
+from itertools import chain
 
 DATA_TIME_INTERVAL = 5 # min
 
@@ -23,13 +23,17 @@ elif torch.backends.mps.is_available():
 class RNNModel(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers=1):
         super(RNNModel, self).__init__()
+        hidden_size = hidden_size if isinstance(hidden_size, list) else [hidden_size]
         self.rnn = nn.RNN(
             input_size=input_size,
-            hidden_size=hidden_size,
+            hidden_size=hidden_size[0],
             num_layers=num_layers,
             batch_first=True,
         )
-        self.linear = nn.Linear(hidden_size, 1)
+        self.linear = nn.Sequential(
+            *chain.from_iterable((nn.Linear(hidden_size[i - 1], hidden_size[i]), nn.ReLU()) for i in range(1, len(hidden_size))),
+            nn.Linear(hidden_size[-1], 1)
+        )
 
     def forward(self, x, hidden_prev=None): # x.shape = (batch_size, 18)
         batch_size = x.shape[0]
