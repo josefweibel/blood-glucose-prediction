@@ -246,7 +246,6 @@ def train(config_name):
     criterion = get_criterion(config)
 
     features = config['features']
-    nb_features = len(features)
 
     losses = []
     val_scores = []
@@ -259,13 +258,10 @@ def train(config_name):
         for i, (X,) in enumerate(train_dataloader):
             model.train()
             X = X.to(device)  # Shape: (batch_size, sequence_length, n_features)
-            Y, _ = model(X)
+            Y, _ = model(X[:, :-1])
 
             # Loss computation
-            if nb_features == 1:
-                loss = criterion(Y.flatten(), X.flatten())  # Compare with the same flattened tensor
-            else:
-                loss = criterion(Y.flatten(), X[:, :, 0].flatten())  # Adjust target as needed for the first feature
+            loss = criterion(Y.flatten(), X[:, 1:, 0].flatten())
 
             optimizer.zero_grad()
             loss.backward()
