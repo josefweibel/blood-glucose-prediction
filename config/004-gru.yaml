@@ -11,6 +11,7 @@ horizons:
   pred: 30
 
 loss: mse
+normalisation: z-score
 
 features:
   - cbg

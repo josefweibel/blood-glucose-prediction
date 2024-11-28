@@ -76,6 +76,27 @@ def get_criterion(config):
     else:
        raise KeyError('unknwon loss function ' + config['loss'])
 
+def get_normalisation_statistics(config, train_data):
+    if config['normalisation'] == 'z-score':
+        return {'normalisation': 'z-score', 'mean': train_data.mean(axis=(0, 1)), 'std': train_data.std(axis=(0, 1))}
+    else:
+        raise KeyError('unknwon normalisation ' + config['normalisation'])
+
+def normalise(data, statistics):
+    if statistics['normalisation'] == 'z-score':
+        mean = statistics['mean'][0:data.shape[2]].to(data.device)
+        std = statistics['std'][0:data.shape[2]].to(data.device)
+        return (data - mean) / std
+    else:
+        raise KeyError('unknwon normalisation ' + statistics['normalisation'])
+
+def denormalise(data, statistics):
+    if statistics['normalisation'] == 'z-score':
+        mean = statistics['mean'][0:data.shape[2]].to(data.device)
+        std = statistics['std'][0:data.shape[2]].to(data.device)
+        return data * std + mean
+    else:
+        raise KeyError('unknwon normalisation ' + statistics['normalisation'])
 
 def build_train_dataloader(config):
     train_data = pd.read_csv('./data/train_processed.csv').sort_values('5minute_intervals_timestamp')
@@ -97,13 +118,17 @@ def build_train_dataloader(config):
 
     print('   training samples:', len(samples))
 
+    samples = torch.Tensor(np.array(samples))
+    norm_statistics = get_normalisation_statistics(config, samples)
+    samples = normalise(samples, norm_statistics)
+
     return DataLoader(
-        TensorDataset(torch.Tensor(np.array(samples))),
+        TensorDataset(samples),
         batch_size=int(config['batch_size']),
         shuffle=True
-    )
+    ), norm_statistics
 
-def build_val_dataloader(config):
+def build_val_dataloader(config, norm_statistics):
     val_data = pd.read_csv('./data/val_processed.csv').sort_values('5minute_intervals_timestamp')
 
     n_train = int(config['horizons']['train'] / DATA_TIME_INTERVAL)
@@ -117,7 +142,7 @@ def build_val_dataloader(config):
         subject_data = val_data[val_data['subject'] == subject]
         for start_idx in range(len(subject_data) - n_train - n_pred + 1):
             x_features = [subject_data[feature].iloc[start_idx:start_idx + n_train].values for feature in features]
-            y = subject_data['cbg'].iloc[start_idx + n_train:start_idx + n_train + n_pred].values
+            y = subject_data['cbg'].iloc[start_idx + n_train:start_idx + n_train + n_pred].values[:, np.newaxis]
 
             # Stack features to get (sequence_length, n_features) array
             x_features = np.stack(x_features, axis=1)
@@ -127,13 +152,19 @@ def build_val_dataloader(config):
 
     print('   val samples:', len(X))
 
+    X = torch.Tensor(np.array(X))
+    X = normalise(X, norm_statistics)
+
+    Y = torch.Tensor(np.array(Y))
+    Y = normalise(Y, norm_statistics)
+
     return DataLoader(
-        TensorDataset(torch.Tensor(np.array(X)), torch.Tensor(np.array(Y))),
+        TensorDataset(X, Y),
         batch_size=int(config['batch_size']),
         shuffle=False,
     )
 
-def validate(model, val_dataloader):
+def validate(model, val_dataloader, norm_statistics):
     model.eval()
 
     with torch.no_grad():
@@ -143,11 +174,11 @@ def validate(model, val_dataloader):
             X = X.to(device)  # Shape: (batch_size, sequence_length, n_features)
             Y_true = Y_true.to(device)
 
-            Y_pred = torch.zeros(Y_true.shape)
+            Y_pred = torch.zeros(Y_true.shape, device=device)
             last_hidden_state = None
             for i in range(Y_true.shape[1]):
                 pred, last_hidden_state = model(X, last_hidden_state)
-                Y_pred[:, i] = pred[:, -1]
+                Y_pred[:, i] = pred[:, -1].unsqueeze(-1)
 
                 if (X.shape[2] >= 2):
                     #####
@@ -157,29 +188,29 @@ def validate(model, val_dataloader):
                     X = torch.cat((X_pred, X_mean, X_zeros), dim =-1)
                     #####
                 else:
-                    X = torch.Tensor(pred[:, -1].unsqueeze(-1).unsqueeze(-1))
+                    X = pred[:, -1].unsqueeze(-1).unsqueeze(-1)
 
-            Y_preds.extend(Y_pred)
-            Y_trues.extend(Y_true)
+            Y_preds.append(denormalise(Y_pred, norm_statistics))
+            Y_trues.append(denormalise(Y_true, norm_statistics))
 
-        Y_preds = torch.vstack(Y_preds)
-        Y_trues = torch.vstack(Y_trues)
+        Y_preds = torch.cat(Y_preds)
+        Y_trues = torch.cat(Y_trues)
 
     return Y_preds, Y_trues
 
 def calculate_metrics(Y_preds, Y_trues):
-    Y_preds = Y_trues.flatten()
-    Y_trues = Y_trues.flatten()
+    with torch.no_grad():
+        Y_preds = Y_preds.flatten()
+        Y_trues = Y_trues.flatten()
 
-    mse = nn.functional.mse_loss(Y_preds, Y_trues)
-    mape = torch.mean(torch.abs(Y_trues - Y_preds) / Y_trues.abs())
-    return {
-        'mse': mse.detach().item(),
-        'rmse': torch.sqrt(mse).detach().item(),
-        'mape': mape.detach().item(),
-        'mae': nn.functional.l1_loss(Y_preds, Y_trues).detach().item()
-    }
-
+        mse = nn.functional.mse_loss(Y_preds, Y_trues)
+        mape = torch.mean(torch.abs(Y_trues - Y_preds) / Y_trues.abs())
+        return {
+            'mse': mse.detach().item(),
+            'rmse': torch.sqrt(mse).detach().item(),
+            'mape': mape.detach().item(),
+            'mae': nn.functional.l1_loss(Y_preds, Y_trues).detach().item()
+        }
 
 def set_seed(seed):
   np.random.seed(seed)
@@ -199,8 +230,8 @@ def train(config_name):
     config = load_config(config_name)
 
     print('👉 loading data')
-    train_dataloader = build_train_dataloader(config)
-    val_dataloader = build_val_dataloader(config)
+    train_dataloader, norm_stats = build_train_dataloader(config)
+    val_dataloader = build_val_dataloader(config, norm_stats)
 
     model = build_model(config)
     model = model.to(device)
@@ -239,12 +270,12 @@ def train(config_name):
             losses.append(loss.detach().item())
             if i % 50 == 0:
                 if len(losses) >= 100:
-                    pbar.set_postfix({'loss': round(np.mean(losses[-100]), 3)})
+                    pbar.set_postfix({'loss': np.mean(losses[-100])})
 
         pbar.set_description('Validating')
 
-        y_trues, y_preds = validate(model, val_dataloader)
-        epoch_scores = calculate_metrics(y_trues, y_preds)
+        y_preds, y_trues = validate(model, val_dataloader, norm_stats)
+        epoch_scores = calculate_metrics(y_preds, y_trues)
 
         if best_epoch_score is None or epoch_scores[config['loss']] < best_epoch_score:
             best_epoch = epoch
@@ -265,6 +296,7 @@ def train(config_name):
                 scores[key].append(value)
 
         json.dump({
+            'norm_stats': {k: v.tolist() if torch.is_tensor(v) else v for k, v in norm_stats.items()},
             'best_epoch': best_epoch,
             'loss': losses,
             'val_scores': scores
@@ -283,13 +315,14 @@ def investigate_predictions(config_name):
     model.load_state_dict(torch.load(f'./models/{config_name}.pt', weights_only=True))
 
     print('👉 loading data')
-    val_dataloader = build_val_dataloader(config)
+    _, norm_stats = build_train_dataloader(config)
+    val_dataloader = build_val_dataloader(config, norm_stats)
 
     print('👉 predicting values')
-    y_trues, y_preds = validate(model, val_dataloader)
+    Y_preds, Y_trues = validate(model, val_dataloader, norm_stats)
 
-    X = torch.vstack([X for X, _ in val_dataloader])
-    return X, y_trues, y_preds
+    X = denormalise(torch.vstack([X for X, _ in val_dataloader]), norm_stats)
+    return X, Y_preds, Y_trues
 
 
 
