@@ -91,24 +91,41 @@ def get_criterion(config):
        raise KeyError('unknwon loss function ' + config['loss'])
 
 def get_normalisation_statistics(config, train_data):
-    if config['normalisation'] == 'z-score':
+    if config['normalisation'] == 'none':
+        return {'normalisation': 'none'}
+    elif config['normalisation'] == 'z-score':
         return {'normalisation': 'z-score', 'mean': train_data.mean(axis=(0, 1)), 'std': train_data.std(axis=(0, 1))}
+    elif config['normalisation'] == 'min-max':
+        return {'normalisation': 'min-max', 'min': train_data.min(dim=1).values.min(dim=0).values, 'max': train_data.max(dim=1).values.max(dim=0).values}
     else:
         raise KeyError('unknwon normalisation ' + config['normalisation'])
 
 def normalise(data, statistics):
-    if statistics['normalisation'] == 'z-score':
+    # print('statistics', statistics)
+    if statistics['normalisation'] == 'none':
+        return data
+    elif statistics['normalisation'] == 'z-score':
         mean = statistics['mean'][0:data.shape[2]].to(data.device)
         std = statistics['std'][0:data.shape[2]].to(data.device)
         return (data - mean) / std
+    elif statistics['normalisation'] == 'min-max':
+        min = statistics['min'][0:data.shape[2]].to(data.device)
+        max = statistics['max'][0:data.shape[2]].to(data.device)
+        return (data - min) / (max - min)
     else:
         raise KeyError('unknwon normalisation ' + statistics['normalisation'])
 
 def denormalise(data, statistics):
-    if statistics['normalisation'] == 'z-score':
+    if statistics['normalisation'] == 'none':
+        return data
+    elif statistics['normalisation'] == 'z-score':
         mean = statistics['mean'][0:data.shape[2]].to(data.device)
         std = statistics['std'][0:data.shape[2]].to(data.device)
         return data * std + mean
+    elif statistics['normalisation'] == 'min-max':
+        min = statistics['min'][0:data.shape[2]].to(data.device)
+        max = statistics['max'][0:data.shape[2]].to(data.device)
+        return data * (max - min) + min
     else:
         raise KeyError('unknwon normalisation ' + statistics['normalisation'])
 
