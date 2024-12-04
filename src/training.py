@@ -19,21 +19,34 @@ if torch.cuda.is_available():
 elif torch.backends.mps.is_available():
     device = torch.device('mps')
 
-
-class RNNModel(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers=1):
-        super(RNNModel, self).__init__()
+class RNNBaseModel(nn.Module):
+    def __init__(self, type, input_size, hidden_size, num_layers=1, rnn_dropout=0., fc_layer_dropout=0.):
+        super(RNNBaseModel, self).__init__()
         hidden_size = hidden_size if isinstance(hidden_size, list) else [hidden_size]
-        self.rnn = nn.RNN(
+        fc_layer_dropout = fc_layer_dropout if isinstance(fc_layer_dropout, list) else [fc_layer_dropout] * len(hidden_size)
+
+        rnn_component = self.__get_rnn_component(type)
+        self.rnn = rnn_component(
             input_size=input_size,
             hidden_size=hidden_size[0],
             num_layers=num_layers,
             batch_first=True,
+            dropout=rnn_dropout,
         )
         self.linear = nn.Sequential(
-            *chain.from_iterable((nn.Linear(hidden_size[i - 1], hidden_size[i]), nn.ReLU()) for i in range(1, len(hidden_size))),
+            *chain.from_iterable((nn.Linear(hidden_size[i - 1], hidden_size[i]), nn.ReLU(), nn.Dropout(fc_layer_dropout[i])) for i in range(1, len(hidden_size))),
             nn.Linear(hidden_size[-1], 1)
         )
+
+    def __get_rnn_component(self, type):
+        if type == 'rnn':
+            return nn.RNN
+        elif type == 'lstm':
+            return nn.LSTM
+        elif type == 'gru':
+            return nn.GRU
+
+        raise KeyError('unknown architecture type ' + type)
 
     def forward(self, x, hidden_prev=None): # x.shape = (batch_size, 18)
         batch_size = x.shape[0]
@@ -66,11 +79,8 @@ def load_config(config_name):
     return config
 
 def build_model(config):
-    params = {**config['architecture']}
-    del params['type']
-
-    if config['architecture']['type'] == 'rnn':
-        return RNNModel(**params, input_size=len(config['features']))
+    if config['architecture']['type'] in ['rnn', 'lstm', 'gru']:
+        return RNNBaseModel(**config['architecture'], input_size=len(config['features']))
     else:
        raise KeyError('unknwon architecture ' + config['architecture']['type'])
 
