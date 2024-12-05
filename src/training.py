@@ -101,7 +101,6 @@ def get_normalisation_statistics(config, train_data):
         raise KeyError('unknwon normalisation ' + config['normalisation'])
 
 def normalise(data, statistics):
-    # print('statistics', statistics)
     if statistics['normalisation'] == 'none':
         return data
     elif statistics['normalisation'] == 'z-score':
@@ -147,7 +146,7 @@ def build_train_dataloader(config):
             x_features = np.stack(x_features, axis=1)
             samples.append(x_features)
 
-    print('   training samples:', len(samples))
+    print('     training samples:', len(samples))
 
     samples = torch.Tensor(np.array(samples))
     norm_statistics = get_normalisation_statistics(config, samples)
@@ -181,7 +180,7 @@ def build_val_dataloader(config, norm_statistics):
 
             Y.append(y)
 
-    print('   val samples:', len(X))
+    print('     val samples:', len(X))
 
     X = torch.Tensor(np.array(X))
     X = normalise(X, norm_statistics)
@@ -267,20 +266,26 @@ def set_seed(seed):
   torch.backends.cudnn.benchmark = False
 
 def train(config_name):
-    set_seed(1)
-
     print('👉 loading config')
 
     config = load_config(config_name)
+    iterations = config['repetitions'] if 'repetitions' in config else 1
 
-    print('👉 loading data')
+    for i in range(iterations):
+        print(f'🆕 training model {i + 1}/{iterations}')
+        train_model(config, config_name, i + 1)
+
+def train_model(config, config_name, seed):
+    set_seed(seed)
+
+    print('  👉 loading data')
     train_dataloader, norm_stats = build_train_dataloader(config)
     val_dataloader = build_val_dataloader(config, norm_stats)
 
     model = build_model(config)
     model = model.to(device)
 
-    print('👉 training model')
+    print('  👉 training model')
 
     optimizer = optim.Adam(model.parameters(), config['lr'], weight_decay=0.)
     criterion = get_criterion(config)
@@ -325,10 +330,10 @@ def train(config_name):
         val_scores.append(epoch_scores)
 
 
-    print('👉 saving model')
-    torch.save(best_epche_state, f'./models/{config_name}.pt')
+    print('  👉 saving model')
+    torch.save(best_epche_state, f'./models/{config_name}_{seed}.pt')
 
-    with open(f'./models/{config_name}_meta.json', '+w') as f:
+    with open(f'./models/{config_name}_{seed}_meta.json', '+w') as f:
         scores = {}
         for epoch_data in val_scores:
             for key, value in epoch_data.items():
@@ -341,6 +346,8 @@ def train(config_name):
             'loss': losses,
             'val_scores': scores
         }, f)
+
+    print()
 
     return model
 
