@@ -352,13 +352,14 @@ def train_model(config, config_name, seed):
 
 
 
-def investigate_predictions(config_name):
-    print('👉 loading model')
-
+def investigate_predictions(config_name, iteration=0):
     config = load_config(config_name)
+    repetitions = config['repetitions'] if 'repetitions' in config else 1
+    print(f'👉 loading model {iteration+1}/{repetitions}')
+
     model = build_model(config).to(device)
 
-    model.load_state_dict(torch.load(f'./models/{config_name}.pt', weights_only=True))
+    model.load_state_dict(torch.load(f'./models/{config_name}_{iteration+1}.pt', weights_only=True))
 
     print('👉 loading data')
     _, norm_stats = build_train_dataloader(config)

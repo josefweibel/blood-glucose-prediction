@@ -1,6 +1,4 @@
 .DS_Store
-models/*
-!models/.gitkeep
 data/*
 !data/.gitkeep
 **/__pycache__
