@@ -287,10 +287,10 @@ def train_model(config, config_name, seed):
 
     print('  👉 training model')
 
+    n_train = int(config['horizons']['train'] / DATA_TIME_INTERVAL)
+
     optimizer = optim.Adam(model.parameters(), config['lr'], weight_decay=0.)
     criterion = get_criterion(config)
-
-    features = config['features']
 
     losses = []
     val_scores = []
@@ -305,8 +305,7 @@ def train_model(config, config_name, seed):
             X = X.to(device)  # Shape: (batch_size, sequence_length, n_features)
             Y, _ = model(X[:, :-1])
 
-            # Loss computation
-            loss = criterion(Y.flatten(), X[:, 1:, 0].flatten())
+            loss = criterion(Y[:, n_train-1:].flatten(), X[:, n_train:, 0].flatten())
 
             optimizer.zero_grad()
             loss.backward()
