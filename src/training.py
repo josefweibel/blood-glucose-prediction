@@ -236,12 +236,25 @@ def calculate_metrics(Y_preds, Y_trues):
 
         mse = nn.functional.mse_loss(Y_preds, Y_trues)
         mape = torch.mean(torch.abs(Y_trues - Y_preds) / Y_trues.abs())
+        gmse = calculate_gmse(Y_preds, Y_trues)
         return {
             'mse': mse.detach().item(),
             'rmse': torch.sqrt(mse).detach().item(),
             'mape': mape.detach().item(),
-            'mae': nn.functional.l1_loss(Y_preds, Y_trues).detach().item()
+            'mae': nn.functional.l1_loss(Y_preds, Y_trues).detach().item(),
+            'gmse': gmse.detach().item(),
+            'grmse': torch.sqrt(gmse).detach().item()
         }
+
+def calculate_gmse(Y_preds, Y_trues, lower=70, upper=180):
+    weights = torch.ones_like(Y_trues)
+    weights[(Y_trues <= lower) & (Y_preds > Y_trues)] = 2.5
+    weights[(Y_trues >= upper) & (Y_preds < Y_trues)] = 2.0
+
+    squared_errors = (Y_trues - Y_preds) ** 2
+    weighted_squared_errors = weights * squared_errors
+
+    return torch.mean(weighted_squared_errors)
 
 def set_seed(seed):
   np.random.seed(seed)
