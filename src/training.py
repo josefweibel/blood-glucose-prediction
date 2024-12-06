@@ -272,6 +272,10 @@ def train(config_name):
     iterations = config['repetitions'] if 'repetitions' in config else 1
 
     for i in range(iterations):
+        if os.path.exists(f'./models/{config_name}_{i+1}.pt'):
+            print(f'🆒 model {i + 1}/{iterations} was already trained')
+            continue
+
         print(f'🆕 training model {i + 1}/{iterations}')
         train_model(config, config_name, i + 1)
 
