@@ -1,0 +1,21 @@
+architecture:
+  type: rnn
+  hidden_size: [512]
+  num_layers: 3
+  rnn_dropout: 0.2
+  fc_layer_dropout: [0.2]
+
+batch_size: 128
+lr: 0.00001
+epochs: 20
+
+horizons:
+  train: 60
+  pred: 30
+
+loss: mse
+normalisation: z-score
+
+features: ['cbg', 'basal', 'gsr', 'carbInput', 'bolus']
+
+repetitions: 3
