@@ -158,11 +158,13 @@ def build_train_dataloader(config):
         shuffle=True
     ), norm_statistics
 
-def build_val_dataloader(config, norm_statistics):
-    val_data = pd.read_csv('./data/val_processed.csv').sort_values('5minute_intervals_timestamp')
+def build_val_dataloader(config, norm_statistics, split='val', n_pred=None):
+    val_data = pd.read_csv(f'./data/{split}_processed.csv').sort_values('5minute_intervals_timestamp')
 
     n_train = int(config['horizons']['train'] / DATA_TIME_INTERVAL)
-    n_pred = int(config['horizons']['pred'] / DATA_TIME_INTERVAL)
+
+    if n_pred is None:
+        n_pred = int(config['horizons']['pred'] / DATA_TIME_INTERVAL)
 
     features = config['features']
 
@@ -356,7 +358,7 @@ def train_model(config, config_name, seed):
 
 
 
-def investigate_predictions(config_name, iteration=0):
+def investigate_predictions(config_name, iteration=0, split='val', n_pred=None):
     config = load_config(config_name)
     repetitions = config['repetitions'] if 'repetitions' in config else 1
     print(f'👉 loading model {iteration+1}/{repetitions}')
@@ -367,7 +369,7 @@ def investigate_predictions(config_name, iteration=0):
 
     print('👉 loading data')
     _, norm_stats = build_train_dataloader(config)
-    val_dataloader = build_val_dataloader(config, norm_stats)
+    val_dataloader = build_val_dataloader(config, norm_stats, split, n_pred)
 
     print('👉 predicting values')
     Y_preds, Y_trues = validate(model, val_dataloader, norm_stats)
